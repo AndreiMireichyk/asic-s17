@@ -1,0 +1,425 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Script-Type" content="text/javascript" />
+<meta http-equiv="cache-control" content="no-cache" />
+<link rel="stylesheet" type="text/css" media="screen" href="/css/cascade.css" />
+<!--[if IE 6]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie6.css" /><![endif]-->
+<!--[if IE 7]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie7.css" /><![endif]-->
+<!--[if IE 8]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie8.css" /><![endif]-->
+<script type="text/javascript" src="/js/xhr.js"></script>
+<script type="text/javascript" src="/js/jquery-1.10.2.js"></script>
+<script type="text/javascript" src="/js/json2.min.js"></script>
+    <script type="text/javascript" src="/js/commands.js"></script>
+<style>
+table td {padding:3px;}
+      table th {padding:3px;}
+
+      table.freq td {white-space:nowrap; width:60px;text-align:right}
+      table.freq select {width:50px;font-weight:bold}
+
+      span.state {width:25px; display: inline-block; padding:3px; background-color:green; color:white}
+      span.very-low {background-color: red !important}
+      span.moderate-low {background-color: yellow !important; color:black !important}
+      span.high {background-color: maroon !important}
+
+      option.immersion {color: white; background-color: red}
+
+    </style>
+    <script> 
+
+      var profiles = {
+        "0" : {voltage_increase: "40", tune_voltage : "1630", tune_frequency : "400", tune_power : "1550", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1650", tune_max_frequency : "425"},
+	"1" : {voltage_increase: "40", tune_voltage : "1650", tune_frequency : "425", tune_power : "1650", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1680", tune_max_frequency : "450"},
+	"2" : {voltage_increase: "40", tune_voltage : "1680", tune_frequency : "450", tune_power : "1757", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1720", tune_max_frequency : "475"},
+	"3" : {voltage_increase: "40", tune_voltage : "1700", tune_frequency : "475", tune_power : "1870", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1740", tune_max_frequency : "500"},
+	"4" : {voltage_increase: "40", tune_voltage : "1720", tune_frequency : "500", tune_power : "1955", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1760", tune_max_frequency : "525"},
+	"5" : {voltage_increase: "40", tune_voltage : "1730", tune_frequency : "525", tune_power : "2350", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1770", tune_max_frequency : "550"},
+	"6" : {voltage_increase: "40", tune_voltage : "1750", tune_frequency : "550", tune_power : "2482", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1790", tune_max_frequency : "575"},
+	"7" : {voltage_increase: "40", tune_voltage : "1770", tune_frequency : "575", tune_power : "2550", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1810", tune_max_frequency : "600"},
+	"8" : {voltage_increase: "40", tune_voltage : "1790", tune_frequency : "600", tune_power : "2699", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1830", tune_max_frequency : "625"},
+	"9" : {voltage_increase: "40", tune_voltage : "1810", tune_frequency : "625", tune_power : "2789", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1840", tune_max_frequency : "650"},
+	"10" : {voltage_increase: "40", tune_voltage : "1840", tune_frequency : "650", tune_power : "2896", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1850", tune_max_frequency : "675"},
+	"11" : {voltage_increase: "40", tune_voltage : "1850", tune_frequency : "675", tune_power : "2950", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1870", tune_max_frequency : "695"},
+	"12" : {voltage_increase: "40", tune_voltage : "1870", tune_frequency : "700", tune_power : "3195", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1890", tune_max_frequency : "720"},
+	"13" : {voltage_increase: "40", tune_voltage : "1910", tune_frequency : "725", tune_power : "3350", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1930", tune_max_frequency : "750"},
+	"14" : {voltage_increase: "40", tune_voltage : "1930", tune_frequency : "750", tune_power : "3450", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1950", tune_max_frequency : "775"},
+	"15" : {voltage_increase: "40", tune_voltage : "1940", tune_frequency : "775", tune_power : "3590", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1960", tune_max_frequency : "800"},
+	"16" : {voltage_increase: "40", tune_voltage : "1960", tune_frequency : "800", tune_power : "3657", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "1980", tune_max_frequency : "825"},
+	"17" : {voltage_increase: "40", tune_voltage : "1980", tune_frequency : "825", tune_power : "3795", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "2000", tune_max_frequency : "850"},
+	"18" : {voltage_increase: "20", tune_voltage : "1990", tune_frequency : "850", tune_power : "4150", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "2010", tune_max_frequency : "875"},
+	"19" : {voltage_increase: "0", tune_voltage : "2000", tune_frequency : "875", tune_power : "4250", tune_freq_step : "5", tune_volt_step : "20", tune_bad_domains_threshold : "1", tune_max_voltage : "2020", tune_max_frequency : "900"}
+      };
+
+      var currentProfile = "-1";
+      var tuneStatus = "0";
+
+      function readConfig() {
+        $.ajax({
+           url : '/cgi-bin/get_tune_profile.cgi',
+           type: 'GET',
+           dataType: 'text',
+           timeout: 30000,
+           cache: false,
+           success: function(data) {
+             if (data != null && data.length > 0) {
+               var lines = data.trim().split('\n');
+               if (lines.length == 0 || !lines[0]) return;
+
+               var profile = {};
+               for (var i = 0; i < lines.length; i++) {
+                  var pair = lines[i].split("=");
+                  profile[pair[0]] = pair[1];
+               }
+
+	       currentProfile = profile["tune_profile"];
+	       $("#profile").val(currentProfile);
+	       if (currentProfile != "-1") {
+                 if (profiles[currentProfile] && profiles[currentProfile].tuned) {
+                   $("#switch").show();
+                 }
+
+	         tuneStatus = profile["tune_status"];
+		 var msg = "tune not started";
+		 if (tuneStatus == 2) 
+                    msg = "tune finished";
+                 if (tuneStatus == 1) {
+                    msg = "tune is running";
+		    $("#stop").show();
+		 }
+
+                 $("#restarts").val(profile["tune_max_restarts"] || "10")
+                 
+		 $("#msg").text("Tune log (" + msg + ")");
+	       }
+	       else {
+		 $("#msg").text("Tune log");
+	       }
+             }
+           }, async: false
+         });
+      }
+
+      function getDisableFan() {
+	$.ajax({
+           url : '/cgi-bin/get_adv_config.cgi',
+           type: 'GET',
+           dataType: 'text',
+           timeout: 30000,
+           cache: false,
+           success: function(data) {
+             if (data != null && data.length > 0) {
+               var advancedConfig = {};
+               var lines = data.split('\n');
+               for (var i = 0; i < lines.length; i++) {
+                 var line = lines[i].split("=");
+                 if (line[0]) {
+                   advancedConfig[line[0]] = line[1].trim();
+                 }
+               }
+               if (advancedConfig["bitmain-disable-fan"] == "1")
+                 $("option.immersion").show();              
+             }
+           }, async: false
+         });
+      }
+
+      function getProfilesInfo() {
+	$.ajax({
+           url : '/cgi-bin/get_profiles.cgi',
+           type: 'GET',
+           dataType: 'text',
+           timeout: 30000,
+           cache: false,
+           success: function(data) {
+             if (data != null && data.length > 0) {
+               var advancedConfig = {};
+               var lines = data.trim().split('\n');
+               for (var i = 0; i < lines.length; i++) {
+                 var line = lines[i];
+                 if (line == ".") continue;
+                 profiles[line].tuned = true;    
+                 $("#profile option[value=" + line + "]").append(" (TUNED)");
+               }
+             }
+           }, async: false
+         });
+      }
+
+
+
+      function readLog() {
+        $.ajax({
+                url: '/cgi-bin/get_tune_log.cgi',
+                type: 'GET',
+                dataType: 'text',
+                timeout: 30000,
+                cache: false,
+                success: function(data) {
+                        $("#log").val(data);
+                },
+                error: function() {
+                        //alert('Ajax Error');
+                }
+        });
+      }
+      
+      function waitAndReload(t) {
+      setTimeout(function() {
+        window.location.reload();
+        }, t);
+      }
+
+      function apply() {
+
+	currentProfile = $("#profile").val();
+
+	var ret = "";
+
+	if (currentProfile != "-1") {
+	    var profile = profiles[currentProfile];
+
+            var ret = "tune_profile=" + currentProfile + "\n";
+	    ret += "tune_status=0\n";
+	    ret += "tune_frequency=" + profile["tune_frequency"] + "\n";
+	    ret += "tune_voltage=" + profile["tune_voltage"] + "\n"
+	    ret += "tune_freq_step=" + profile["tune_freq_step"] + "\n"
+	    ret += "tune_volt_step=" + profile["tune_volt_step"] + "\n"
+	    ret += "tune_max_frequency=" + profile["tune_max_frequency"] + "\n"
+	    ret += "tune_power=" + profile["tune_power"] + "\n"
+	    ret += "tune_bad_domains_threshold=" + profile["tune_bad_domains_threshold"] + "\n"
+	    ret += "tune_max_voltage=" + profile["tune_max_voltage"] + "\n";
+	    ret += "voltage_increase=" + profile["voltage_increase"] + "\n";
+            ret += "tune_max_restarts=" + $("#restarts").val() + "\n";
+            ret += "tune_uptime=360\n";
+            ret += "tune_restarts=0";
+	} else {
+	    ret = "tune_profile=-1";
+	}
+
+        $("#load").show();
+
+        jQuery.ajax({
+                url: '/cgi-bin/apply_profile.cgi',
+                type: 'POST',
+                dataType: 'text',
+                timeout: 30000,
+                cache: false,
+                data: ret,
+                success: function(data) {
+                  waitAndReload(60000);
+                },
+                error: function() {
+                  waitAndReload(60000);
+                },
+                async: false
+            });
+      }
+
+      function stopTune() {
+         jQuery.ajax({
+            url: '/cgi-bin/stop_tune.cgi',
+            type: 'POST',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            data: "",
+            success: function(data) {
+              window.location.reload();
+            },
+            error: function() {
+              window.location.reload();
+            },
+            async: false
+         });
+      }
+
+      $(document).ready(function() {
+           getProfilesInfo();
+           readConfig();
+           readLog();
+           getDisableFan();          
+
+           $("#profile").change(function() {
+             var profile = $(this).val();
+             if (profiles[profile] && profiles[profile].tuned) {
+               $("#switch").show();
+             } else {
+               $("#switch").hide();
+             }
+           });
+
+           $("#switch").click(function() {
+             jQuery.ajax({
+                url: '/cgi-bin/switch_profile.cgi',
+                type: 'POST',
+                dataType: 'text',
+                timeout: 30000,
+                cache: false,
+                data: $("#profile").val(),
+                success: function(data) {
+                  waitAndReload(60000);
+                },
+                error: function() {
+                  waitAndReload(60000);
+                },
+                async: false
+            });
+
+           });
+
+           setInterval(function() {
+               readLog();
+           }, 10000);
+    });
+     
+    </script>
+<title>Ant Miner</title>
+</head>
+<body class="lang_en">
+	<p class="skiplink">
+		<span id="skiplink1"><a href="#navigation">Skip to navigation</a></span>
+		<span id="skiplink2"><a href="#content">Skip to content</a></span>
+	</p>
+	<div id="menubar">
+		<h2 class="navigation">
+			<a id="navigation" name="navigation">Navigation</a>
+		</h2>
+		<div class="clear"></div>
+	</div>
+    <div id="menubar2">
+        <header class="app-header navbar">
+            <img src="./images/logo.png" width="150" height="50" alt="Logo" class="navbar-brand-full">
+            <div class="app-header-items" style="color: rgb(255, 255, 255); padding-right: 50px;">
+                <span class="badge badge-pill badge-success" style="margin-right: 20px;">...</span>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="stopSearchHeader" onclick="stopSearchHeader(this)">
+                    Stop search
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="startSearchHeader" onclick="startSearchHeader(this)">
+                    Start search
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="startHeader" onclick="startMinerHeader(this)">Resume
+                    mining
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="stopHeader" onclick="stopMinerHeader(this)">Stop
+                    mining
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="restartHeader" onclick="restartHeader(this)">Restart
+                    miner
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="rebootHeader" onclick="rebootHeader(this)">Reboot
+                </button>
+            </div>
+        </header>
+    </div>
+	<div id="maincontainer">
+		<div id="tabmenu">
+			<div class="tabmenu1">
+            <ul class="tabmenu l1">
+               <li class="tabmenu-item-status"><a href="/index.html">System</a></li>
+               <li class="tabmenu-item-system active"><a href="/cgi-bin/minerConfiguration.cgi">Miner Configuration</a></li>
+               <li class="tabmenu-item-network"><a href="/cgi-bin/minerStatus.cgi">Miner Status</a></li>
+               <li class="tabmenu-item-system"><a href="/network.html">Network</a></li>
+                 <li class="tabmenu-item-network"><a href="/reportBug.html">Report a Bug</a></li>
+            </ul>
+            <br style="clear: both" />
+            <div class="tabmenu2">
+               <ul class="tabmenu l2">
+                  <li class="tabmenu-item-system"><a href="/cgi-bin/minerConfiguration.cgi">General Settings</a></li>
+                  <li class="tabmenu-item-system active"><a href="/profiles.html">ASIC Autotune Profiles</a></li>
+                  <li class="tabmenu-item-system"><a href="/rate.html">ASIC management</a></li>
+		  <li class="tabmenu-item-crontab"><a href="/stats.html">Mining statistics</a></li>
+                  <li class="tabmenu-item-crontab"><a href="/timezone.html">Timezone</a></li>
+                  <li class="tabmenu-item-system"><a href="/spconf.html">Redirect % of ASIC speed</a></li>
+               </ul>
+					<br style="clear: both" />
+				</div>
+			</div>
+		</div>
+		<div id="maincontent">
+			<noscript>
+				<div class="errorbox">
+					<strong>Java Script required!</strong><br /> You must enable Java Script in your browser or web will not work properly.
+				</div>
+			</noscript>
+			<h2 style="padding-bottom:10px;"><a id="content" name="content">ASIC management</a></h2>
+                            <img src="/resources/icons/loading.gif" width="20" id="load" style="display:none"/>
+
+    <fieldset class="cbi-section">
+        <legend id="global">Tune profile</legend>
+                  <div class="cbi-value">
+                     <label class="cbi-value-title" for="keep">Profile</label>
+                     <div class="cbi-value-field">
+                        <select id="profile" class="cbi-input-text">
+                           <option value="0">~38.7TH, ~1190W</option>
+			   <option value="1">~41TH, ~1290W</option>
+                           <option value="2">~43.5TH, ~1390W</option>
+			   <option value="3">~45.9TH, ~1462W</option>
+                           <option value="4">~48.3TH, ~1535W</option>
+			   <option value="5">~50.8TH, ~1758W</option>
+                           <option value="6">~53.2TH, ~1917W</option>
+			   <option value="7">~55.6TH, ~2052W</option>
+                           <option value="8">~58TH, ~2244W</option>
+			   <option value="9">~60.4TH, ~2390W</option>
+                           <option value="10">~62.8TH, ~2538W</option>
+			   <option value="11">~65.3TH, ~2686W</option>
+                           <option value="12">~67.2TH, ~2782W</option>
+			   <option value="13">~70TH, ~2950W</option>
+                           <option value="14">~72.5TH, ~3170W</option>
+			   <option value="15">~75TH, ~3275W</option>
+                           <option value="16">~78TH, ~3437W</option>
+                           <option value="17">~80,1TH ~3595W</option>
+                           <option value="18" style="display:none" class="immersion">~82TH ~4100W</option>
+                           <option value="19" style="display:none" class="immersion">~84TH ~4200W</option>
+                         </select>
+                         <input type="button" value="Switch to profile" style="display:none" id="switch" class="cbi-button cbi-button-save"/>
+                       </div>
+                      </div>
+                    <div class="cbi-value">
+                     <label class="cbi-value-title" for="restarts">Max number of restarts</label>
+                     <div class="cbi-value-field">
+                       <select id="restarts" class="cbi-input-text">
+			   <option value="0">Don't check</option>
+                           <option value="1">1</option>
+                           <option value="2">2</option>
+                           <option value="3">3</option>
+                           <option value="4">4</option>
+                           <option value="5">5</option>
+                           <option value="6">6</option>
+                           <option value="7">7</option>
+                           <option value="8">8</option>
+                           <option value="9">9</option>
+                           <option value="10" selected>10</option>
+                           <option value="15">15</option>
+                           <option value="20">20</option>
+                         </select>
+                       </div>
+                      </div>
+    </fieldset>
+
+
+
+        <div class="cbi-page-actions" id="kat">
+            <input class="cbi-button cbi-button-save right" type="button" onclick="apply();" id="apply" value="Apply" />
+	    <input class="cbi-button cbi-button-save right" type="button" onclick="stopTune();" id="stop" style="display:none" value="Stop tune" />
+        </div>
+
+	<br/>
+	<h3 id="msg">Tune log</h3>
+        <div>
+             <textarea style="width:100%" readonly="readonly" wrap="off" rows="28" id="log"></textarea>
+        </div>
+
+
+			
+	<div class="clear"></div>
+		</div>
+	</div>
+	<div class="clear"></div>
+	<div style="text-align: center; bottom: 0; left: 0; height: 1.5em; font-size: 80%; margin: 0; padding: 5px 0px 2px 8px; background-color: #918ca0; width: 100%;">
+		<font style="color:#fff;">Copyright &copy; 2013-2014, Bitmain Technologies</font>
+	</div>
+</body>
+</html>

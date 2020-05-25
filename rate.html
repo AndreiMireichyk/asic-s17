@@ -1,0 +1,900 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Content-Script-Type" content="text/javascript" />
+<meta http-equiv="cache-control" content="no-cache" />
+<link rel="stylesheet" type="text/css" media="screen" href="/css/cascade.css" />
+<!--[if IE 6]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie6.css" /><![endif]-->
+<!--[if IE 7]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie7.css" /><![endif]-->
+<!--[if IE 8]><link rel="stylesheet" type="text/css" media="screen" href="/css/ie8.css" /><![endif]-->
+<script type="text/javascript" src="/js/xhr.js"></script>
+<script type="text/javascript" src="/js/jquery-1.10.2.js"></script>
+<script type="text/javascript" src="/js/json2.min.js"></script>
+    <script type="text/javascript" src="/js/commands.js"></script>
+<style>
+table td {padding:3px;}
+      table th {padding:3px;}
+
+      table.freq td {white-space:nowrap; width:60px;text-align:right; font-size: 11px}
+      table.freq select {width:50px;font-weight:bold; font-size: 11px}
+
+      span.state {width:21px; display: inline-block; padding:3px; background-color:green; color:white}
+      span.very-low {background-color: red !important}
+      span.moderate-low {background-color: yellow !important; color:black !important}
+      span.high {background-color: maroon !important}
+
+      div.gradient {
+        text-align:center;
+        height: 20px;
+        color:white;
+        background-color: red;
+        background-image:
+        linear-gradient(
+          to right, rgb(150,150,150), rgb(0,0,0)
+        );
+      }
+
+      table.legend {border-spacing: 0px}
+      table.legend td {padding:0px;padding-left:2px;width:100px;height:20px}
+
+
+    </style>
+    <script>
+
+    var chipsNum = 48;
+    var chipsPerDomain = 4;
+    var domainsPerChain = 12;
+    var coreNum = 672;
+
+    var data = { 0 : {}, 1 : {}, 2 : {}};
+    var rates = { 0 : {}, 1 : {}, 2 : {}};
+    var errors = { 0 : {}, 1 : {}, 2 : {}};
+    var elapsed = 0;
+    var logDate, curDate;
+    var startDate;
+    var properElapsed = 0;
+    var allowedFreqs = [];
+    var freqs = [[], [], []];
+    var freq;
+    var workMode = 0;
+    var hashrates = {0 : 0, 1 : 0, 2 : 0};
+    var hideErrors = true;
+    var advancedConfig = {};
+
+    for (var i = 50; i <= 1150; i+=5) {
+        allowedFreqs.push(i);
+    }
+
+
+    function get_index(domain, chip) {
+        if ( domain > (domainsPerChain - 1) )
+            return 0;
+        if ( domain & 1 )
+            return chipsPerDomain * domain - chip + (chipsPerDomain - 1);
+        return chip + chipsPerDomain * domain;
+    }
+
+    var chipDomainMap = {};
+    for (var i = 0; i < chipsPerDomain; i++)
+        for (var j = 0; j < domainsPerChain; j++)
+            chipDomainMap[get_index(j, i)] = [i, j];
+
+
+    function changeFreq(chain, step) {
+        $("select").each(function(i, e) {
+            //if (e.id == "volt" || e.id.indexOf("ch") == 0 || e.id == "freq") return;
+            if (chain == null && e.id.indexOf("freq-") != 0) return;
+
+            if (chain != null && e.id.indexOf("freq-" + chain + "-") != 0) return;
+
+            var newVal = parseInt($(e).val()) + 5 * step;
+            if (newVal > 1150) {
+                e.value = 1150;
+            } else if (newVal < 50) {
+                e.value = 50;
+            } else {
+                e.value = newVal;
+            }
+            var parts = e.id.split('-');
+            freqs[parts[1]][parts[2]] = parseInt(e.value);
+        });
+        if (chain == null) {
+          for (var i = 0; i < 3; i++)
+            recalc_chain_freq(i);
+        } else {
+          recalc_chain_freq(chain);
+        }
+        
+        recalc_freq();
+    }
+
+    function changeChip(chain, chip, val) {
+        freqs[chain][chip] = parseInt(val);
+        recalc_chain_freq(chain);
+        recalc_freq();
+    }
+
+    function changeDomainFreq(domain, chain, step) {
+        $("select").each(function(i, e) {
+            if (e.id == "volt" || e.id == "freq") return;
+
+            if (e.id.indexOf("freq-" + chain + "-") != 0) return;
+
+            var newId = e.id.replace("freq", "state");
+
+            if ($("#" + newId).attr("domain").indexOf("Domain: " + domain + ",") != 0) return;
+
+            var newVal = parseInt($(e).val()) + 5 * step;
+                if (newVal > 1150) {
+                    e.value = 1150;
+                } else if (newVal < 50) {
+                    e.value = 50;
+                } else {
+                e.value = newVal;
+            }
+            freqs[chain][newId.split('-')[2]] = parseInt(e.value);
+        });
+        recalc_chain_freq(chain);
+        recalc_freq();
+    }
+
+    function save() {
+
+        $("#load").show();
+
+        var ret = $("#volt").val() + "\n";
+
+        for (var i = 0; i <= 2; i++) {
+            for (var j = 0; j <= chipsNum; j++) {
+                var val = jQuery("#freq-" + i + "-" + j).val();
+                if (val) {
+                    ret += ((i + 1) + ":" + (j + 1) +":" + val) + "\n";
+                }
+            }
+        }
+
+        var payload = "bitmain-disable-fan=" + ($("#imm")[0].checked ? "1" : "0");
+        payload += "\ncheck-chain-defect=" + ($("#low")[0].checked ? "1" : "0");
+        payload += "\nbringup-bypass=" + ($("#bring")[0].checked ? "1" : "0");
+        payload += "\nalter_api_miner_type=" + ($("#alter_type")[0].checked ? "1" : "0");
+        payload += "\nfix_red_chips_minutes=" + $("#red").val();
+        if ($("#temp").val()) {
+            payload += "\nmin-fan-temp=" + $("#temp").val();
+        }
+        if ($("#max_out").val()) {
+            payload += "\nmax-overheat-temp-out=" + $("#max_out").val();
+        }
+        if ($("#max_in").val()) {
+            payload += "\nmax-overheat-temp-in=" + $("#max_in").val();
+        }
+
+
+
+
+        jQuery.ajax({
+            url: "/cgi-bin/set_advanced_conf.cgi",
+            type: 'POST',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            data: payload,
+            success: function(data) {
+              //window.location.reload();
+            },
+            error: function() {
+              //window.location.reload();
+            },
+            async: false
+        });
+
+        jQuery.ajax({
+            url: '/cgi-bin/save_freqs_no_eeprom.cgi',
+            type: 'POST',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            data: ret.trim(),
+            success: function(data) {
+                window.location.reload();
+            },
+            error: function() {
+                window.location.reload();
+            },
+            async: false
+        });
+    }
+
+    function readAdvancedConfig() {
+        jQuery.ajax({
+            url: '/cgi-bin/get_adv_config.cgi',
+            type: 'GET',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            success: function(data) {
+                if (data != null && data.length > 0) {
+                    var lines = data.split('\n');
+                    for (var i = 0; i < lines.length; i++) {
+                        var line = lines[i].split("=");
+                        if (line[0]) {
+                            advancedConfig[line[0]] = line[1].trim();
+                        }
+                    }
+                    $("#imm")[0].checked = advancedConfig["bitmain-disable-fan"] == "1";
+                    $("#low")[0].checked = advancedConfig["check-chain-defect"] != "0";
+                    $("#red").val(advancedConfig["fix_red_chips_minutes"] || "0");
+                    $("#temp").val(advancedConfig["min-fan-temp"] || "0");
+                    $("#bring")[0].checked = advancedConfig["bringup-bypass"] == "1";
+                    $("#max_out").val(advancedConfig["max-overheat-temp-out"] || "90");
+                    $("#max_in").val(advancedConfig["max-overheat-temp-in"] || "80");
+                    $("#alter_type")[0].checked = advancedConfig["alter_api_miner_type"] != "0";
+                }
+            },
+            error: function() {
+            },
+            async: false
+        });
+    }
+
+    function readApi() {
+        $.ajax({
+            url : '/cgi-bin/miner_stats.cgi',
+            type: 'GET',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            success: function(data) {
+                if (data != null && data.length > 0 && data.indexOf("Socket") == -1) {
+                data = JSON.parse(data.trim());
+                    if (data.STATS && data.STATS.length > 1) {
+                        var stat = data.STATS[1];
+                        jQuery("#global").text("Global settings (" + stat.total_power + " watts)");
+                        for (var c = 0; c < 3; c++) {
+                            var power = stat["chain_power" + (c + 1)];
+                            if (parseInt(power) == 84) power = "0";
+                            jQuery("#lg" + c).text("Chain " + (c + 1) + " (" + power + " watts)");
+                        }
+                    }
+                }
+            }, async: false
+        });
+    }
+
+    function readManualFreqs() {
+        $.ajax({
+            url : '/cgi-bin/get_manual_freqs.cgi',
+            type: 'GET',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            success: function(data) {
+                if (data != null && data.length > 0) {
+                    var first = true;
+                    var lines = data.trim().split('\n');
+                    for (var i = 0; i < lines.length; i++) {
+                        if (first) {
+                            $("#volt").val(lines[i].trim());
+                            first = false;
+                        } else {
+                            var parts = lines[i].split(":");
+                            var chain = parseInt(parts[0]) - 1;
+                            if (freqs[chain])
+                                freqs[chain][parseInt(parts[1]) - 1] = parseInt(parts[2]);
+                        }
+                    }
+                }
+           }, async: false
+        });
+    }
+
+    function getRateStyle(chain, chip, rate, chipFreq, errors) {
+        if (!hideErrors && errors > 5) {
+            var gr = 127 - (errors > 127 ? 127 : errors);
+            return {"style" : "background-color:rgb(" + gr + "," + gr + "," + gr + ") !important"};
+	    } else {
+            if (chipFreq != null && chipFreq != 0) {
+                var expectedRate = chipFreq * coreNum / 1000;
+                var pc = rate / expectedRate;
+
+                if (pc < 0.6) return {"class" : "very-low"};
+                if (pc < 0.9) return {"class" : "moderate-low"};
+                if (pc > 1.3) return {"class" : "high"};
+            }
+        }
+        return "";
+    }
+
+    function switchErrors() {
+        hideErrors = !hideErrors;
+	    readLog(freq);
+    }
+
+    function readLog(freq) {
+        hashrates = {0 : 0, 1 : 0, 2 : 0};
+        $.ajax({
+            url: '/cgi-bin/get_hash_rate_log.cgi',
+            type: 'GET',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            success: function(data) {
+                if (data != null && data.length > 0 && data[0] != '.') {
+                    var lines = data.trim().split('\n');
+                    var chain = -1;
+                    for (var l = 0; l < lines.length; l++) {
+                        var line = lines[l];
+                        if (line.length > 0) {
+                            line = line.replace("][", ":").replace("[", "").replace("]=", ":");
+                            var parts = line.split(":");
+                            var chain = parts[0];
+                            var chip = parts[1];
+                            var rate = parseFloat(parts[2]).toFixed(0);
+                            hashrates[chain]+=parseFloat(parts[2]);
+                            if (parts.length == 4) {
+                                errors[chain][chip] = parseInt(parts[3]);
+                                $("#state-" + chain + "-" + chip).attr("title", "HW: " + errors[chain][chip]);
+                            }
+                            $("#state-" + chain + "-" + chip).text(rate);
+                            var style = getRateStyle(chain, chip, rate, freqs[chain][chip] ? freqs[chain][chip] : freq, errors[chain][chip]);
+                            $("#state-" + chain + "-" + chip).removeAttr("class");
+                            $("#state-" + chain + "-" + chip).removeAttr("style");
+                            $("#state-" + chain + "-" + chip).addClass("state");
+                            if (style["class"]) {
+                                $("#state-" + chain + "-" + chip).addClass(style["class"]);
+                            } else {
+                                $("#state-" + chain + "-" + chip).attr("style", style["style"]);
+                            }
+                        }
+                    }
+                }
+            }, error: function() {
+            }, async: false
+        });
+    }
+
+      var doNotChangeFreq = false;
+
+    function recalc_chain_freq(chain) {
+        var avg = 0;
+        for (var i = 0; i < chipsNum; i++) {
+            avg += freqs[chain][i];
+        }
+        avg /= chipsNum;
+        avg = parseInt(avg);
+        for (var k = 0; k < allowedFreqs.length; k++) {
+            if (allowedFreqs[k] >= avg) {
+                doNotChangeFreq = true;
+                $("#ch" + (chain + 1) + "f").val(allowedFreqs[k]);
+                doNotChangeFreq = false;
+                break;
+            }
+        }
+    }
+
+    function recalc_freq() {
+        var avg = 0;
+        var chainAvg = 0;
+        var chainCount = 0;
+        for (var chain = 0; chain < 3; chain++) {
+            chainAvg  = 0;
+            for (var i = 0; i < chipsNum; i++) {
+                chainAvg += freqs[chain][i];
+            }
+            if (chainAvg > 0) {
+                chainCount++;
+                avg += chainAvg;
+            }
+        }
+        avg /= (chainCount * chipsNum);
+        avg = parseInt(avg);
+
+        for (var k = 0; k < allowedFreqs.length; k++) {
+            if (allowedFreqs[k] >= avg) {
+                doNotChangeFreq = true;
+                $("#freq").val(allowedFreqs[k]);
+                doNotChangeFreq = false;
+                break;
+            }
+        }
+    }
+
+
+    $(document).ready(function() {
+
+        jQuery("#holder_header").click(function() {
+            var currentState = jQuery("#advanced_holder").is(":hidden");
+            if (currentState) {
+                jQuery("#holder_state")[0].innerHTML = "&#9660";
+            } else {
+                jQuery("#holder_state")[0].innerHTML = "&#9654";
+            }
+            jQuery("#advanced_holder").toggle();
+        });
+
+        $.ajax({
+            url: '/cgi-bin/get_miner_conf.cgi',
+            type: 'GET',
+            dataType: 'text',
+            timeout: 30000,
+            cache: false,
+            success: function(data) {
+            if (data != null && data.length > 0) {
+                var cfg = JSON.parse(data);
+                freq = cfg["bitmain-freq"];
+                workMode = parseInt(cfg["bitmain-work-mode"]) || 0;
+            }
+            },error: function() {
+            }, async : false
+        });
+
+        readManualFreqs();
+	readApi();
+	readAdvancedConfig();
+
+	    setInterval(function() {
+            readLog(freq);
+	    }, 2000);
+
+        var power = 0;
+
+        $("#err").change(function() {
+            switchErrors();
+	    });
+
+        var opts = "";
+        for (var k = 0; k < allowedFreqs.length; k++) {
+            opts += "<option value='" + allowedFreqs[k] + "'>" + allowedFreqs[k] + "</option>";
+        }
+        $("#freq").append(opts);
+        $("#freq").change(function() {
+            $('select[id^="freq-"]').val(this.value);
+            for (var i = 0; i < 3; i++)
+                $("#ch" + (i + 1) + "f").val(this.value);
+        });
+
+
+        for (var c = 0; c <= 2; c++) {
+            $("#ch" + (c + 1) + "f").append(opts);
+            $("#ch" + (c + 1) + "f").change(
+                (function(c) {
+                    return function() {
+                        if (!doNotChangeFreq)
+                            $('select[id^="freq-' + c + '-"]').val(this.value);
+                        }
+                })(c));
+            recalc_chain_freq(c);
+
+            var rows = "";
+            rows += "<tr>";
+            for (var j = 0; j < domainsPerChain; j++) {
+                rows += "<th>" + (j + 1) + "</th>";
+            }
+            rows += "</tr>";
+            for (var i = 0; i < chipsPerDomain; i++) {
+                rows += "<tr>";
+                for (var j = 0; j < domainsPerChain; j++) {
+                    rows += "<td>";
+                    var idx = get_index(j, i);
+                    if (idx < chipsNum) {
+                        rows += (idx + 1) + "=<select onchange='changeChip(" + c + "," + idx + ", this.value)' id='freq-" + c + "-" + idx + "'><option value=''>-</option>";
+                        for (var k = 0; k < allowedFreqs.length; k++) {
+                            rows += "<option value='" + allowedFreqs[k] + "'" + (freqs[c][idx] == allowedFreqs[k] ? " selected" : "") + ">" + allowedFreqs[k] + "</option>";
+                        }
+                        rows += "</select>";
+                        rows += "<span domain='" + "Domain: " + j + ", index " + i + "' class='state' id='state-" + c + "-" + idx + "'>N/A</span>";
+                    }
+                    rows += "</td>";
+                }
+                rows += "</tr>";
+                rows += "<tr>";
+            }
+
+	        for (var i = 0; i < domainsPerChain; i++) {
+                rows += "<td><div class='cbi-page-actions'>" +
+                    "<input class='cbi-button cbi-button-save right' type='button' onclick='changeDomainFreq(" + i + "," + c + ", -1);' value='-1' /></div><div class='cbi-page-actions'>" +
+                    "<input class='cbi-button cbi-button-save right' type='button' onclick='changeDomainFreq(" + i + "," + c + ", +1);' value='+1' /></div>"
+            }
+            jQuery("#freq" + c).append(rows);
+        }
+
+        $.ajax({
+          url : '/cgi-bin/get_tune_profile.cgi',
+          type: 'GET',
+          dataType: 'text',
+          timeout: 30000,
+          cache: false,
+          success: function(data) {
+            if (data != null && data.length > 0) {
+              var lines = data.trim().split('\n');
+              if (lines.length == 0 || !lines[0]) return;
+
+              var profile = {};
+              for (var i = 0; i < lines.length; i++) {
+                 var pair = lines[i].split("=");
+                 profile[pair[0]] = pair[1];
+              }
+
+              currentProfile = profile["tune_profile"];
+              $("#profile").val(currentProfile);
+              if (currentProfile != "-1") {
+                tuneStatus = profile["tune_status"];
+                if (tuneStatus == 1) {
+                  $("#tuneWarning").show();
+                  $("select").attr("disabled", "disabled");
+                  $("input:not(#err)").attr("disabled", "disabled");
+                  setTimeout("location.reload(true);", 20000);
+                }
+              }
+            }
+          }, async: false
+        });
+
+        recalc_freq();
+
+        readLog(freq);
+    });
+
+    </script>
+<title>Ant Miner</title>
+</head>
+<body class="lang_en">
+	<p class="skiplink">
+		<span id="skiplink1"><a href="#navigation">Skip to navigation</a></span>
+		<span id="skiplink2"><a href="#content">Skip to content</a></span>
+	</p>
+	<div id="menubar">
+		<h2 class="navigation">
+			<a id="navigation" name="navigation">Navigation</a>
+		</h2>
+		<div class="clear"></div>
+	</div>
+    <div id="menubar2">
+        <header class="app-header navbar">
+            <img src="./images/logo.png" width="150" height="50" alt="Logo" class="navbar-brand-full">
+            <div class="app-header-items" style="color: rgb(255, 255, 255); padding-right: 50px;">
+                <span class="badge badge-pill badge-success" style="margin-right: 20px;">...</span>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="stopSearchHeader" onclick="stopSearchHeader(this)">
+                    Stop search
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="startSearchHeader" onclick="startSearchHeader(this)">
+                    Start search
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="startHeader" onclick="startMinerHeader(this)">Resume
+                    mining
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="stopHeader" onclick="stopMinerHeader(this)">Stop
+                    mining
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="restartHeader" onclick="restartHeader(this)">Restart
+                    miner
+                </button>
+                <button type="submit" class="btn btn-primary btn-pill btn-sm" id="rebootHeader" onclick="rebootHeader(this)">Reboot
+                </button>
+            </div>
+        </header>
+    </div>
+	<div id="maincontainer">
+		<div id="tabmenu">
+         <div class="tabmenu1">
+            <ul class="tabmenu l1">
+               <li class="tabmenu-item-status"><a href="/index.html">System</a></li>
+               <li class="tabmenu-item-system active"><a href="/cgi-bin/minerConfiguration.cgi">Miner Configuration</a></li>
+               <li class="tabmenu-item-network"><a href="/cgi-bin/minerStatus.cgi">Miner Status</a></li>
+               <li class="tabmenu-item-system"><a href="/network.html">Network</a></li>
+                 <li class="tabmenu-item-network"><a href="/reportBug.html">Report a Bug</a></li>
+            </ul>
+            <br style="clear: both" />
+            <div class="tabmenu2">
+               <ul class="tabmenu l2">
+                  <li class="tabmenu-item-system"><a href="/cgi-bin/minerConfiguration.cgi">General Settings</a></li>
+                 <li class="tabmenu-item-system"><a href="/profiles.html">ASIC Autotune Profiles</a></li>
+                  <li class="tabmenu-item-system active"><a href="/rate.html">ASIC management</a></li>
+		  <li class="tabmenu-item-crontab"><a href="/stats.html">Mining statistics</a></li>
+                  <li class="tabmenu-item-crontab"><a href="/timezone.html">Timezone</a></li>
+                  <li class="tabmenu-item-system"><a href="/spconf.html">Redirect % of ASIC speed</a></li>
+               </ul>
+	<br style="clear: both" />
+				</div>
+			</div>
+		</div>
+		<div id="maincontent">
+			<noscript>
+				<div class="errorbox">
+					<strong>Java Script required!</strong><br /> You must enable Java Script in your browser or web will not work properly.
+				</div>
+			</noscript>
+			<h2 style="padding-bottom:10px;"><a id="content" name="content">ASIC management</a></h2>
+                            <img src="/resources/icons/loading.gif" width="20" id="load" style="display:none"/>
+
+<h2 id="tuneWarning" style="color:red;font-weight:bold;display:none">Auto tune is in progress!</h2>
+
+
+<h2 style="text-align:center;cursor:pointer" id="holder_header" title="Click to expand">Advanced settings<span id="holder_state">&#9654;</span></h2>
+   <div id="advanced_holder" style="display:none">
+    <fieldset class="cbi-section">
+        <legend id="global">Global settings</legend>
+                  <div class="cbi-value">
+                     <label class="cbi-value-title" for="keep">Voltage</label>
+                     <div class="cbi-value-field">
+                       <select id="volt" class="cbi-input-text">
+                           <option value="1610"> 16.10V </option>
+                           <option value="1620"> 16.20V </option>
+                           <option value="1630"> 16.30V </option>
+                           <option value="1640"> 16.40V </option>
+                           <option value="1650"> 16.50V </option>
+                           <option value="1660"> 16.60V </option>
+                           <option value="1670"> 16.70V </option>
+                           <option value="1680"> 16.80V </option>
+                           <option value="1690"> 16.90V </option>
+                           <option value="1700"> 17.00V </option>
+                           <option value="1710"> 17.10V </option>
+                           <option value="1720"> 17.20V </option>
+                           <option value="1730"> 17.30V </option>
+                           <option value="1740"> 17.40V </option>
+                           <option value="1750"> 17.50V </option>
+                           <option value="1760"> 17.60V </option>
+                           <option value="1770"> 17.70V </option>
+                           <option value="1780"> 17.80V </option>
+                           <option value="1790"> 17.90V </option>
+                           <option value="1800"> 18.00V </option>
+                           <option value="1810"> 18.10V </option>
+                           <option value="1820"> 18.20V </option>
+                           <option value="1830"> 18.30V </option>
+                           <option value="1840"> 18.40V </option>
+                           <option value="1850"> 18.50V </option>
+                           <option value="1860"> 18.60V </option>
+                           <option value="1870"> 18.70V </option>
+                           <option value="1880"> 18.80V </option>
+                           <option value="1890"> 18.90V </option>
+                           <option value="1900"> 19.00V </option>
+                           <option value="1910"> 19.10V </option>
+                           <option value="1920"> 19.20V </option>
+                           <option value="1930"> 19.30V </option>
+                           <option value="1940"> 19.40V </option>
+                           <option value="1950"> 19.50V </option>
+                           <option value="1960"> 19.60V </option>
+                           <option value="1970"> 19.70V </option>
+                           <option value="1980"> 19.80V </option>
+                           <option value="1990"> 19.90V </option>
+                           <option value="2000"> 20.00V </option>
+                           <option value="2010"> 20.10V </option>
+                           <option value="2020"> 20.20V </option>
+                           <option value="2030"> 20.30V </option>
+                           <option value="2040"> 20.40V </option>
+                           <option value="2050"> 20.50V </option>
+                           <option value="2060"> 20.60V </option>
+                           <option value="2070"> 20.70V </option>
+                           <option value="2080"> 20.80V </option>
+                           <option value="2090"> 20.90V </option>
+                           <option value="2100"> 21.00V </option>
+                         </select>
+                       </div>
+                      </div>
+                     <div class="cbi-value">
+                       <label class="cbi-value-title" for="keep">Apply global freq</label>
+                       <div class="cbi-value-field">
+                         <select id="freq" class="cbi-input-text"></select>
+                        </div>
+                       </div>
+
+                      <div class="cbi-value">
+                       <label class="cbi-value-title" for="imm">Immersion mode</label>
+                       <div class="cbi-value-field">
+                         <input type="checkbox" id="imm" class="cbi-input-text" onclick="return !this.checked || confirm('Are you sure?')"/>
+                       </div>
+                     </div>
+                     <div class="cbi-value">
+                       <label class="cbi-value-title" for="low">Enable additional protection of chips and boards against s/c caused by manufacturing defects</label>
+                       <div class="cbi-value-field">
+                         <input type="checkbox" id="low" class="cbi-input-text" onclick="return this.checked || confirm('Are you sure?')"/>
+                       </div>
+                     </div>
+                     <div class="cbi-value">
+                       <label class="cbi-value-title" for="bring">Do not check bringup temperature on start (ignore ERROR_TEMP_TOO_LOW)</label>
+                       <div class="cbi-value-field">
+                         <input type="checkbox" id="bring" class="cbi-input-text" onclick="return !this.checked || confirm('Are you sure?')"/>
+                       </div>
+                     </div>
+                     <div class="cbi-value">
+                       <label class="cbi-value-title" for="alter_type">Enable API when miner is not mining</label>
+                       <div class="cbi-value-field">
+                         <input type="checkbox" id="alter_type" class="cbi-input-text"/>
+                       </div>
+                     </div>
+                     <div class="cbi-value">
+                        <label class="cbi-value-title" for="red">Perform check of red chips every</label>
+                        <div class="cbi-value-field">
+                          <select id="red" class="cbi-input-text">
+                                 <option value="0">Do not check</option>
+                                 <option value="30">30 minutes</option>
+                                 <option value="60">Every hour</option>
+                                 <option value="120">Every two hours</option>
+                                 <option value="180">Every three hours</option>
+                             </select>
+                           </div>
+                      </div>
+                          <div class="cbi-value">
+                              <label class="cbi-value-title" for="temp">Prevent chips temperature to fall below this value</label>
+                              <div class="cbi-value-field">
+                                <select id="temp" class="cbi-input-text">
+                                       <option value="0">Do not check</option>
+                                       <option value="60">60</option>
+                                       <option value="61">61</option>
+                                       <option value="62">62</option>
+                                       <option value="63">63</option>
+                                       <option value="64">64</option>
+                                       <option value="65">65</option>
+                                       <option value="66">66</option>
+                                       <option value="67">67</option>
+                                       <option value="68">68</option>
+                                       <option value="69">69</option>
+                                       <option value="70">70</option>
+                                       <option value="71">71</option>
+                                       <option value="72">72</option>
+                                       <option value="73">73</option>
+                                       <option value="74">74</option>
+                                       <option value="75">75</option>
+                                       <option value="76">76</option>
+                                       <option value="77">77</option>
+                                       <option value="78">78</option>
+                                       <option value="79">79</option>
+                                       <option value="80">80</option>
+                                   </select>
+                                 </div>
+                            </div>
+                            <div class="cbi-value">
+                              <label class="cbi-value-title" for="max_in">Stop mining when PCB temp is higher than</label>
+                              <div class="cbi-value-field">
+                                <select id="max_in" class="cbi-input-text">
+                                       <option value="60">60</option>
+                                       <option value="61">61</option>
+                                       <option value="62">62</option>
+                                       <option value="63">63</option>
+                                       <option value="64">64</option>
+                                       <option value="65">65</option>
+                                       <option value="66">66</option>
+                                       <option value="67">67</option>
+                                       <option value="68">68</option>
+                                       <option value="69">69</option>
+                                       <option value="70">70</option>
+                                       <option value="71">71</option>
+                                       <option value="72">72</option>
+                                       <option value="73">73</option>
+                                       <option value="74">74</option>
+                                       <option value="75">75</option>
+                                       <option value="76">76</option>
+                                       <option value="77">77</option>
+                                       <option value="78">78</option>
+                                       <option value="79">79</option>
+                                       <option value="80" selected>80</option>
+                                   </select>
+                                 </div>
+                            </div>
+                            <div class="cbi-value">
+                              <label class="cbi-value-title" for="max_out">Stop mining when chips temp is higher than</label>
+                              <div class="cbi-value-field">
+                                <select id="max_out" class="cbi-input-text">
+                                       <option value="85">85</option>
+                                       <option value="86">86</option>
+                                       <option value="87">87</option>
+                                       <option value="88">88</option>
+                                       <option value="89">89</option>
+                                       <option value="90" selected>90</option>
+                                       <option value="91">91</option>
+                                       <option value="92">92</option>
+                                       <option value="93">93</option>
+                                       <option value="94">94</option>
+                                       <option value="95">95</option>
+                                       <option value="96">96</option>
+                                       <option value="97">97</option>
+                                       <option value="98">98</option>
+                                       <option value="99">99</option>
+                                       <option value="100">100</option>
+                                       <option value="101">101</option>
+                                       <option value="102">102</option>
+                                       <option value="103">103</option>
+                                       <option value="104">104</option>
+                                       <option value="105">105</option>
+                                   </select>
+                                 </div>
+                            </div>
+
+
+                     <!--<div class="cbi-value">
+                       <label class="cbi-value-title" for="keep">Show HW errors</label>
+                       <div class="cbi-value-field">
+                         <input type="checkbox" id="err" class="cbi-input-text"/>
+                       </div>
+                     </div>-->
+    </fieldset>
+</div>
+
+<fieldset class="cbi-section">
+     <label>All chains frequency: </label>
+     <input class="cbi-button cbi-button-save" type="button" onclick="changeFreq(null, +1);" value="+1" />
+     <input class="cbi-button cbi-button-save" type="button" onclick="changeFreq(null,-1);" value="-1" />
+
+     <label> | Show HW errors</label>
+     <input type="checkbox" id="err" class="cbi-input-text"/>
+
+</fieldset>
+
+ <table style="border:none;width:600px">
+   <tr>
+     <td colspan="5">
+         <div class="gradient">Number of HW</div>
+     </td>
+     <td rowspan="2" valign="top">
+<table class="legend" style="width:300px">
+    <tr>
+      <td style="background-color:red">&lt;60% of ideal</td>
+      <td style="background-color:yellow">&lt;80% of ideal</td>
+      <td style="background-color:green;color:white">~Ideal</td>
+<!--      <td style="background-color:maroon;color:white">Abnormal</td>-->
+    </tr>
+  </table>
+     </td>
+   </tr>
+   <tr>
+     <td width="25%">1</td>
+     <td width="25%">10</td>
+     <td width="25%">20</td>
+     <td width="25%">40</td>
+     <td width="25%">&gt;80</td>
+   <tr>
+ </table>
+
+<br/>
+
+
+    <fieldset class="cbi-section">
+      <legend id="lg0">Chain 1</legend>
+      <div class="cbi-value">
+        <label>Apply chain 1 frequency: </label>
+        <select id="ch1f" style="width:50px"><option value=''>-</option></select>
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(0,+1);" value="+1" />
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(0,-1);" value="-1" />
+      </div>
+
+      <table border="1" id="freq0" class="freq" style="border-collapse:collapse"></table>
+    </fieldset>
+
+    <fieldset class="cbi-section">
+      <legend id="lg1">Chain 2</legend>
+      <div class="cbi-value">
+        <label>Apply chain 2 frequency: </label>
+        <select id="ch2f" style="width:50px"><option value=''>-</option></select>
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(1,+1);" value="+1" />
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(1,-1);" value="-1" />
+      </div>
+      <table border="1" id="freq1" class="freq" style="border-collapse:collapse"></table>
+    </fieldset>
+    <fieldset class="cbi-section">
+      <legend id="lg2">Chain 3</legend>
+      <div class="cbi-value">
+        <label>Appy chain 3 frequency: </label>
+        <select id="ch3f" style="width:50px"><option value=''>-</option></select>
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(2,+1);" value="+1" />
+        <input class="cbi-button cbi-button-save " type="button" onclick="changeFreq(2,-1);" value="-1" />
+       </div>
+
+
+      <table border="1" id="freq2" class="freq" style="border-collapse:collapse"></table>
+    </fieldset>
+
+        <div class="cbi-page-actions" id="kat">
+            <input class="cbi-button cbi-button-save right" type="button" onclick="save();" id="save1" value="Save &amp; run" />
+        </div>
+
+			<div class="clear"></div>
+		</div>
+	</div>
+	<div class="clear"></div>
+	<div style="text-align: center; bottom: 0; left: 0; height: 1.5em; font-size: 80%; margin: 0; padding: 5px 0px 2px 8px; background-color: #918ca0; width: 100%;">
+		<font style="color:#fff;">Copyright &copy; 2013-2014, Bitmain Technologies</font>
+	</div>
+</body>
+</html>
