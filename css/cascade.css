@@ -22,6 +22,7 @@ body {
 	font-size: 11pt;
 	line-height: 100%;
 	padding-bottom: 1.5em;
+	overflow-x: hidden;
 }
 
 * {
@@ -90,7 +91,7 @@ ul.tabmenu li.active a {
 	border: 1px solid #AAAAAA;
 	border-bottom: none;
 }
-
+	ul.tabmenu .ul.tabmenu
 ul.tabmenu li a:hover {
 	color: #444444;
 	border-color: #444444;
@@ -289,6 +290,7 @@ textarea#syslog {
 	width: 96%;
 	margin: 0 auto;
 	height:100%;
+	padding-top: 25px;
 }
 
 #maincontent {
@@ -396,10 +398,11 @@ input[type=button] {
 select,
 input,
 textarea {
-	background: #eeeeee;
+	padding: 5px;
+	border-radius: 5px;
+	border: 1px solid #cecece;
 	color: #000000;
-	border-width: 1px;
-	border-color: #000000;
+
 }
 
 input[type=image] {
@@ -431,13 +434,18 @@ img.cbi-image-button {
 	margin: 0 2px;
 	vertical-align: middle;
 }
-
+#maincontent h2 .cbi-button{
+	position: relative;
+	top: -10px;
+}
 input.cbi-button {
 	background-color: #EEEEEE;
 	background-repeat: no-repeat;
 	background-position: 1px center;
 	border: 1px solid #CCCCCC;
 	border-radius: 3px;
+	padding: 5px !important;
+	background-image: none !important;
 }
 
 input.cbi-button:hover {
@@ -1044,6 +1052,7 @@ div.cbi-tab-descr {
 	align-items: center;
 	justify-content: space-between;
 	background-color: #0a2b40 !important;
+	box-sizing: border-box;
 }
 .app-header-items{
 	display: flex;

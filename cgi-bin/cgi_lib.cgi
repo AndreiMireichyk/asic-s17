@@ -66,7 +66,7 @@ show_msg ()
     echo '</div>'
     echo '<div class="clear"></div>'
 	echo '<div style="text-align: center; bottom: 0; left: 0; height: 1.5em; font-size: 80%; margin: 0; padding: 5px 0px 2px 8px; background-color: #918ca0; width: 100%;">'
-	echo '<font style="color:#fff;">Copyright &copy; 2013-2014, Bitmain Technologies</font>'
+	echo '<font style="color:#fff;">Copyright &copy; 2020, BiXBiT</font>'
 	echo '</div>'
     echo '</body>'
     echo '</html>'
